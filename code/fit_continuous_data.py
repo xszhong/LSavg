@@ -20,6 +20,23 @@ def generate_continuous_data(alpha = 2.5, size = 100000, xmin = 1.0):
         sample.append(x)
     return sample
 
+def linear_binning(x, width = 1):
+    x_min = min(x)
+    x_max = max(x)
+    
+    bins = np.arange(x_min, x_max + width, width)
+    counts, edges = np.histogram(x, bins=bins)
+    
+    centers = list(map(lambda X, Y: np.sqrt(X * Y), edges[:-1], edges[1:]))
+    
+    probs = counts / np.sum(counts)
+    
+    widths = bins[1:] - bins[:-1]
+    probs = probs / widths  # normalize
+    
+    return zip(*((center, count, prob) for center, count, prob, in zip(centers, counts, probs) if count > 0))
+    #return centers, counts, probs
+
 ### input two vectors, in which x is the key vector and y is the percentage vector of x.
 def powerlaw_fit(x, y):
     length = len(x)
@@ -77,27 +94,9 @@ n = 1000000
 
 x = generate_continuous_data(alpha, n, xmin)
 
-x_min = min(x)
-x_max = max(x)
 width = 1
 
-bins = np.arange(x_min, x_max + width, width)
-counts, edges = np.histogram(x, bins=bins)
-
-widths = bins[1:] - bins[:-1]
-counts = counts / widths    # normalize
-
-# centers  = edges[:-1] # use the minimal values
-# centers = edges[1:] # use the maximal values
-# centers = (edges[1:] + edges[:-1])/2.0    # set the center as the arithmetic average of the two end points
-# centers = list(map(lambda X, Y: 10 ** ((np.log10(X) + np.log10(Y))/2.0), edges[1:], edges[:-1])) # set the center as the average of the logarithmic of the two end points
-centers = list(map(lambda X, Y: np.sqrt(X * Y), edges[:-1], edges[1:]))
-
-count_sum = sum(counts)
-
-key_all = []
-count_all = []
-prob_all = []
+key_all, count_all, prob_all = linear_binning(x, width)
 
 flag_X1 = False
 index_X1 = -1
@@ -105,30 +104,19 @@ index_X1 = -1
 index_Xf = -1
 flag_Xf = False
 
-for i in range(len(counts)):
-    key = centers[i]
-    count = counts[i]
-    prob = count / count_sum
-    
-    if count <= 0.0:
-        continue
-    
-    key_all.append(key)
-    count_all.append(count)
-    prob_all.append(prob)
+for i in range(len(count_all)):
     
     if flag_X1 == False:
         index_X1 = i
     
-#     if count <= 1:
-    if prob <= 1/n:
+    if count_all[i] <= 1:
         flag_X1 = True
         
-    if flag_Xf == False and i == len(counts) - 1:
+    if flag_Xf == False and i == len(count_all) - 1:
         index_Xf = i
         flag_Xf = True
     
-    if flag_Xf == False and i < len(counts) - 2 and count > max(counts[i + 1: ]):
+    if flag_Xf == False and i < len(count_all) - 2 and count_all[i] > max(count_all[i + 1: ]):
         index_Xf = i
     else:
         flag_Xf = True
@@ -174,7 +162,7 @@ prob_X1_hat = calculate_pdf_hat(key_X1, K_X1, alpha_X1_mean)
 print("alpha_X1_mean:", alpha_X1_mean, "K_X1:", K_X1)
 # print("prob_X1_hat:", prob_X1_hat)
 
-x1min_X1 = (K_X1 * n) ** (1.0/np.abs(alpha_X1_mean))
+x1min_X1 = (K_X1 * n * width) ** (1.0/np.abs(alpha_X1_mean))
 
 cdf_X1 = calculate_cdf(prob_X1)
 cdf_X1_hat = calculate_cdf(prob_X1_hat)
@@ -198,7 +186,7 @@ prob_X5th_hat = calculate_pdf_hat(key_X1, K_X5th, alpha_X5th_mean)
 print("alpha_X5th_mean:", alpha_X5th_mean, "K_X5th:", K_X5th)
 # print("prob_X1_hat:", prob_X1_hat)
 
-x1min_X5th = (K_X5th * n) ** (1.0/np.abs(alpha_X5th_mean))
+x1min_X5th = (K_X5th * n * width) ** (1.0/np.abs(alpha_X5th_mean))
 
 cdf_X5th = calculate_cdf(prob_X1)
 cdf_X5th_hat = calculate_cdf(prob_X5th_hat)
@@ -221,7 +209,7 @@ prob_Xf_hat = calculate_pdf_hat(key_X1, K_Xf, alpha_Xf_mean)
 print("alpha_Xf_mean:", alpha_Xf_mean, "K_Xf:", K_Xf)
 # print("prob_Xf_hat:", prob_Xf_hat)
 
-x1min_Xf = (K_Xf * n) ** (1.0/np.abs(alpha_Xf_mean))
+x1min_Xf = (K_Xf * n * width) ** (1.0/np.abs(alpha_Xf_mean))
 
 cdf_Xf = calculate_cdf(prob_X1)
 cdf_Xf_hat = calculate_cdf(prob_Xf_hat)
@@ -242,11 +230,11 @@ plt.figure(figsize=(5.5, 4.5))
 plt.plot(key_all, prob_all, "o", label=parameters)
 plt.plot(key_all, np.exp(prob_all_hat), "k-", label=ls_all_label)
 plt.plot(key_X1, prob_X1_hat, "g*-", label=ls_X1_label)
-plt.plot(x1min_X1, 1.0/n, "g*")
+plt.plot(x1min_X1, 1.0/n/width, "g*")
 plt.plot(key_X1, prob_Xf_hat, "r+-", label=ls_Xf_label)
-plt.plot(x1min_Xf, 1.0/n, "r+")
+plt.plot(x1min_Xf, 1.0/n/width, "r+")
 plt.plot(key_X1, prob_X5th_hat, "y-", label=ls_X5th_label)
-plt.plot(x1min_X5th, 1.0/n, "y+")
+plt.plot(x1min_X5th, 1.0/n/width, "y+")
 
 plt.xscale('log')
 plt.yscale('log')
